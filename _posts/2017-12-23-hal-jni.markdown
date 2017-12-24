@@ -4,7 +4,7 @@ title:      "Android硬件访问服务(一)"
 subtitle:   " \"使用JNI直接操作硬件\""
 date:       2017-12-23 
 author:     "Jason"
-header-img: "img/post-bg-2015.jpg"
+header-img: "img/android-jni.jpeg"
 catalog: true
 tags:
     - HAL
