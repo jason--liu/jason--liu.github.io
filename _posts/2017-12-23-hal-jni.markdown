@@ -1,0 +1,242 @@
+---
+layout:     post
+title:      "Android硬件访问服务(一)"
+subtitle:   " \"使用JNI直接操作硬件\""
+date:       2017-12-23 
+author:     "Jason"
+header-img: "img/post-bg-2015.jpg"
+catalog: true
+tags:
+    - HAL
+    - JNI
+---
+
+## JNI
+
+JNI即Java Native Interface.它是Java访问C/C++的接口。我们知道Java是平台无关的语言，那为什么要创建一个和Native相关的语言呢，这不就破会了Java平台无关的特性吗？
+
+虽然Java很强大，几乎无所不能。但在对性能要求比较高的环境中，Java就比C/C++逊色多了，因为毕竟需要虚拟机嘛。而且，有些Linux系统调用Java是不支持的，比如`ioctl`，只能C/C++才能调用。那么Java怎么调用Native层的C/C++代码呢？这就需要用到JNI技术。其实JNI技术的核心就是建立Java层与Native层的映射关系，记住这一点。Java调用C的过程大概分三步。
+
+- 加载C库
+
+Java层中调用`System.loadLibrary("XXX")`函数，一般是在静态代码块中调用这个函数。`XXX`是库的名字，比如库名是`libtest.so`.那么`xxx`就是`test`。
+
+- 建立映射
+
+有两种方法建立Java与C的映射关系，一种是所谓静态的，另外一种当然是动态的。静态映射的方法比较简单。
+
+```shell
+javac Test.java
+javah Test//会生成一个头文件
+```
+
+然后根据头文件填充本地C函数。
+
+动态映射稍微复杂点，Android系统中使用的就是这种方法，下面会详细介绍。
+
+## 实战
+
+下面就以一个例子来介绍Java如何通过JNI来操作LED的。实验使用的是IMX6Q平台，Android6.0。
+
+首先看看内核驱动层，LED在硬件上很简单，就是通过拉高拉低GPIO来点亮和熄灭LED。
+
+```c
+#define IMX_GPIO_NR(port, index)		((((port)-1)*32)+((index)&31))
+static int led_major = 211;
+struct led_gpio_desc {
+    int gpio;
+    char *name;
+};
+static struct led_gpio_desc led_gpio [] = {
+    {
+        .gpio = IMX_GPIO_NR(3, 21),
+        .name = "led4",
+    },
+    {
+        .gpio = IMX_GPIO_NR(3, 22),
+        .name = "led5",
+    },
+    {
+        .gpio = IMX_GPIO_NR(3, 23),
+        .name = "led6",
+    },
+
+};
+static int led_gpio_open(struct inode *inode , struct file *filp)
+{
+    int ret;
+    int i;
+
+    for (i = 0; i < 3; i++) {
+        if (gpio_is_valid(led_gpio[i].gpio)){
+            ret = gpio_request(led_gpio[i].gpio, led_gpio[i].name);
+            if (ret) {
+                printk(KERN_ERR "led gpio request failed.\n");
+                return -1;
+            }
+        }
+    }
+    return 0;
+}
+static long led_gpio_ctrl (struct file *file, unsigned int cmd, unsigned long args)
+{
+    gpio_direction_output(led_gpio[args].gpio, cmd);
+    return 0;
+}
+static const struct file_operations led_gpio_fops = {
+    .owner = THIS_MODULE,
+    .open = led_gpio_open,
+    .unlocked_ioctl = led_gpio_ctrl,
+
+};
+static int led_gpio_init(void)
+{
+    int ret;
+    ret = register_chrdev(led_major, "led_gpio", &led_gpio_fops);
+    if (ret < 0) {
+        printk(KERN_ERR "led_gpio: can't get major %d.\n", led_major);
+        return ret;
+    }
+}
+static void led_gpio_exit(void)
+{
+    unregister_chrdev(led_major, "led_gpio");
+}
+```
+
+可以看到代码很简单，就是一个字符设备驱动程序，核心就是通过`ioctrl`系统调用来操作LED。
+
+接下来看看JAVA怎么操作到LED的，先看JNI层。
+
+```c
+#include <jni.h>  /* /usr/lib/jvm/java-1.7.0-openjdk-amd64/include/ */
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <sys/ioctl.h>
+#include <android/log.h>  /* liblog */
+
+ #define  TAG "LedGPIO"
+// 定义info信息
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO,TAG,__VA_ARGS__)
+// 定义debug信息
+#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__)
+// 定义error信息
+#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR,TAG,__VA_ARGS__)
+
+#if 0
+typedef struct {
+    char *name;          /* Java里调用的函数名 */
+    char *signature;    /* JNI字段描述符, 用来表示Java里调用的函数的参数和返回值类型 */
+    void *fnPtr;          /* C语言实现的本地函数 */
+} JNINativeMethod;
+#endif
+static jint fd = 0;
+jint led_open(JNIEnv *env, jobject cls)
+{
+	fd = open("/dev/gpiodev", O_RDWR);
+	if (fd < 0)
+	{
+		LOGE("open /dev/gpiodev error\n");
+		return -1;
+	}
+	LOGD("native open\n");
+	return 0;
+}
+void led_close(JNIEnv *env, jobject cls)
+{
+	close(fd);
+	LOGD("native close\n");
+}
+jint led_ctrl(JNIEnv *env, jobject cls, jint which, jint status)
+{
+	LOGD("native ctrl which = %d, status = %d\n", which, status);
+	ioctl(fd, status, which);
+	return 0;
+}
+static const JNINativeMethod methods[] = {
+	{"ledOpen", "()I", (void *)led_open},
+	{"ledClose", "()V", (void *)led_close},
+	{"ledCtrl", "(II)I", (void *)led_ctrl},
+};
+/* System.loadLibrary */
+JNIEXPORT jint JNICALL
+JNI_OnLoad(JavaVM *jvm, void *reserved)
+{
+	JNIEnv *env;
+	jclass cls;
+
+	if ((*jvm)->GetEnv(jvm, (void **)&env, JNI_VERSION_1_4)) {
+		return JNI_ERR; /* JNI version not supported */
+	}
+	cls = (*env)->FindClass(env, "com/example/jason/led_gpio/led_ctrl");
+	if (cls == NULL) {
+		return JNI_ERR;
+	}
+
+	/* 2. map java hello <-->c c_hello */
+	if ((*env)->RegisterNatives(env, cls, methods, sizeof(methods)/sizeof(methods[0])) < 0)
+		return JNI_ERR;
+
+	return JNI_VERSION_1_4;
+}
+```
+
+下面简单分析下，当Java层调用`System.loadLibrary`时，JNI层的`JNI_OnLoad`就会被调用。在`JNI_OnLoad`中，通过`FindClass`把Java层的`led_ctrl`类绑定起来，不然怎么知道JNI中提供的方法是给哪个类使用的呢？
+
+JNI代码的编译可把我折腾了一番。直接贴一个编译命令
+
+```bash
+arm-linux-gnueabihf-gcc -fPIC -shared led_ctrl.c -o libled_ctrl.so -I/usr/lib/jvm/java-1.7.0-openjdk-amd64/include/  -nostdlib /work/android-6.0.1-2.1.0/prebuilts/ndk/9/platforms/android-21/arch-arm/usr/lib/libc.so  -I/work/android-6.0.1-2.1.0/prebuilts/ndk/9/platforms/android-21/arch-arm/usr/include/  /work/android-6.0.1-2.1.0/prebuilts/ndk/9/platforms/android-21/arch-arm/usr/lib/liblog.so -mfloat-abi=softfp
+```
+
+>如果不加-nostdlib /work/android-6.0.1-2.1.0/prebuilts/ndk/9/platforms/android-21/arch-arm/usr/lib/libc.so APK会报java.lang.UnsatisfiedLinkError: dlopen failed: library "libc.so.6" not found
+>
+>liblog.so主要是为了在JNI中添加打印调试信息。
+>
+>-mfloat-abi=softfp　由于我使用的编译工具链配置成立了*hard-float* ABI。而C库貌似使用的是*soft-float* ABI.
+>
+>所以这里加上这个参数，以避免出现XXX uses VFP register arguments, XXX.so does not have的错误
+
+然后就是建立映射关系了，在`methods`数组中就将Java层和Native建立起联系了。那Java层的代码又是怎么调用的呢？首先声明led_ctrl类,由于里面的本地方法都是static的，所以不需要实例话对象，就可以直接调用ledCtrl来操作LED了，是不是很简单？
+
+```java
+public class led_ctrl {
+    public static native int ledOpen();
+    public static native void ledClose();
+    public static native int ledCtrl(int which, int status);
+    static {
+        System.loadLibrary("led_ctrl");
+    }
+}
+```
+
+在测试之前还有几步，由于我们的驱动程序不会自动创建设备节点，需要手动创建，而且还需要访问权限
+
+```bash
+root@sabresd_6dq:/ mknod /dev/gpiodev c 211 0
+root@sabresd_6dq:/ chmod 666 /dev/gpiodev
+```
+
+下面是测试结果。
+
+![测试结果](https://jason--liu.github.io/img/201712232218.png)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
