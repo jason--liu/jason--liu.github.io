@@ -34,3 +34,19 @@ tags:
 ![](https://raw.githubusercontent.com/jason--liu/jason--liu.github.io/master/img/add-modules.png)
 
 点击+号后选择modules.重新同步Graddle,就可以在AndroidStudio使用Android系统的hidden方法了.
+
+## 错误解决
+
+在编译过程中,可能会出现错误.比如
+
+> ava.lang.OutOfMemoryError: GC overhead limit exceeded
+
+只需要在app/build.gradle中加入如下代码,我使用的是android studio 2.3.3
+
+```bash
+dexOptions { 
+		  javaMaxHeapSize "4g" 
+}
+```
+
+然后重新编译就可以了.
