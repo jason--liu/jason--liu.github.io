@@ -1,6 +1,6 @@
 ---
 layout:     post
-title:      "Android硬件访问服务(一)"
+title:      "Android硬件访问服务(二)"
 subtitle:   " \"使用HAL操作硬件\""
 date:       2017-12-25
 author:     "Jason"
