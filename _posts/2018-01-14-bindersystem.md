@@ -2,7 +2,7 @@
 layout:     post
 title:      "Android Binder系统分析"
 subtitle:   ""
-date:       2017-12-24
+date:       2018-1-14
 author:     "Jason"
 header-img: "img/android-jni.jpeg"
 catalog: true
