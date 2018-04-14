@@ -1,6 +1,6 @@
 ---
 layout:     post
-title:      "Google AI Tensorflow填坑日志"
+title:      "Google 神经网络TensorFlow填坑日志"
 subtitle:   ""
 date:       2018-04-14
 author:     "Jason"
