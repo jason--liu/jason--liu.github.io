@@ -20,7 +20,7 @@ sigset_t是代表信号集合的数据结构。一个进程有一个信号集，
 
 先介绍几个信号编程常用的系统API
 
-```c
+```c++
 sigemptyset();//把信号集中的所有信号都清0，表示64个信号都没来  
 sigfillset();//把信号集中所有信号都置1，即屏蔽所有信号，用得少  
 sigaddset();//往信号集中增加信号  
@@ -61,7 +61,7 @@ int sigprocmask(int how, const sigset_t *set, sigset_t *oldset);
 
 这些系统API直接讲解不容易理解，下面结合一个具体的例子看看。
 
-```c
+```c++
 #include <stdio.h>
 #include <stdlib.h>  //malloc
 #include <unistd.h>
