@@ -52,6 +52,7 @@ markdown: kramdown
 highlighter: rouge
 kramdown:
   input: GFM                            # use Github Flavored Markdown !important
+  hard_wrap: true
 
 
 
@@ -67,7 +68,7 @@ gitalk:
   repo: jason--liu.github.io    #仓库名称
   owner: jason--liu    #github用户名
   admin: jason--liu
-  distractionFreeMode: true #是否启用类似FB的阴影遮罩
+  distractionFreeMode: fasle #是否启用类似FB的阴影遮罩
 
 
 # 统计
@@ -86,7 +87,7 @@ ga_domain: auto             # 默认的是 auto, 这里我是自定义了的域�
 
 # Featured Tags
 featured-tags: true                     # 是否使用首页标签
-featured-condition-size: 1              # 相同标签数量大于这个数，才会出现在首页
+featured-condition-size: 3 # 相同标签数量大于这个数，才会出现在首页
 
 
 
